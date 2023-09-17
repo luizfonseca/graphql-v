@@ -7,9 +7,9 @@ pub:
 	// The character offset at which this Node ends.
 	end int
 	// The Token at which this Node begins.
-	start_token Token
+	start_token ?&Token
 	// The Token at which this Node ends.
-	end_token Token
+	end_token ?&Token
 	// The Source document the AST represents.
 	source Source
 }
@@ -18,8 +18,8 @@ fn Location.new(start_token Token, end_token Token, source Source) Location {
 	return Location{
 		start: start_token.start
 		end: end_token.end
-		start_token: start_token
-		end_token: end_token
+		start_token: &start_token
+		end_token: &end_token
 		source: source
 	}
 }

@@ -21,7 +21,7 @@ pub:
 
 fn Source.new(body string, name ?string, location_offset ?LocationOffset) Source {
 	return Source{
-		body: body
+		body: &body
 		name: name or { 'GraphQL request' }
 		location_offset: location_offset or {
 			LocationOffset{

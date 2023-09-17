@@ -144,7 +144,7 @@ fn (mut p Parser) parse_value_literal(is_const bool) !ValueNode {
 		}
 		else {
 			// println('UNEXPECTED: parse_value_literal')
-			p.unexpected(none)!
+			p.unexpected(token)!
 			return error('')
 		}
 	}
@@ -262,13 +262,9 @@ fn (mut parser Parser) parse_definition() !DefinitionNode {
 	has_description := parser.peek_description()
 
 	keyword_token := if has_description {
-		t := parser.lexer.lookahead()
-		// println('+++ FOUND next token ${t.value}')
-		t
+		parser.lexer.lookahead()
 	} else {
-		t := parser.lexer.token
-		// println('+++ USING CURRENT TOKEN ${t.value}')
-		t
+		parser.lexer.token
 	}
 
 	// println('+++ NAME ${keyword_token.kind.gql_str()} VALUE: ${keyword_token.value}')
@@ -1000,7 +996,7 @@ fn (p Parser) peek_description() bool {
 // Returns a node that, if configured to do so, sets a "loc" field as a
 // location object, used to identify the place in the source that created a
 // given parsed object.
-fn (parser Parser) node[T](start_token Token, mut node T) !T {
+fn (parser Parser) node[T](start_token &Token, mut node T) !T {
 	if !parser.options.no_location {
 		node.loc = Location.new(start_token, parser.lexer.last_token, parser.lexer.source)
 	}
@@ -1017,7 +1013,7 @@ fn (p Parser) peek(kind TokenKind) bool {
 
 // If the next token is of the given kind, return that token after advancing the lexer.
 // Otherwise, do not change the parser state and throw an error.
-fn (mut p Parser) expect_token(kind TokenKind) !Token {
+fn (mut p Parser) expect_token(kind TokenKind) !&Token {
 	token := p.lexer.token
 
 	// println('prev token ${token.kind}')
@@ -1075,7 +1071,7 @@ fn (mut p Parser) expect_optional_keyword(value string) !bool {
 }
 
 // Helper function for creating an error when an unexpected lexed token is encountered.
-fn (parser Parser) unexpected(at_token ?Token) ! {
+fn (parser Parser) unexpected(at_token ?&Token) ! {
 	token := match at_token {
 		none {
 			parser.lexer.token

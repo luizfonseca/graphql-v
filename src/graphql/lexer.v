@@ -6,8 +6,8 @@ pub:
 mut:
 	line_start int
 	line       int
-	last_token Token
-	token      Token
+	last_token &Token
+	token      &Token
 }
 
 fn Lexer.new(source Source) Lexer {
@@ -15,15 +15,15 @@ fn Lexer.new(source Source) Lexer {
 
 	return Lexer{
 		source: source
-		last_token: start_of_file_token
-		token: start_of_file_token
+		last_token: &start_of_file_token
+		token: &start_of_file_token
 		line: 1
 		line_start: 0
 	}
 }
 
 // Advances the token stream to the next non-ignored token.
-fn (mut lexer Lexer) advance() Token {
+fn (mut lexer Lexer) advance() &Token {
 	lexer.last_token = lexer.token
 	token := lexer.lookahead()
 	// println('..advancing from ${lexer.token.kind} to ${token.kind}')
@@ -35,13 +35,13 @@ fn (mut lexer Lexer) advance() Token {
 
 // Looks ahead and returns the next non-ignored token,
 // but does not change the state of Lexer.
-fn (mut lexer Lexer) lookahead() Token {
+fn (mut lexer Lexer) lookahead() &Token {
 	mut token := lexer.token
 
 	if token.kind != TokenKind.eof {
 		for {
 			if next := token.next {
-				token = *next
+				token = next
 			} else {
 				// println('char ends at ${token.end}')
 				mut next_token := read_next_token(mut lexer, token.end) or { panic(err) }
@@ -50,8 +50,8 @@ fn (mut lexer Lexer) lookahead() Token {
 				// println('...>> next token ${next_token.kind}')
 				// println('...>> next token VALUE ${next_token.value}')
 				token.next = &next_token
-				next_token.prev = &token
-				token = next_token
+				next_token.prev = token
+				token = &next_token
 			}
 
 			// Exits loop
