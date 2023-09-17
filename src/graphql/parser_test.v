@@ -1,7 +1,7 @@
-module graphql
+import graphql
+import os
 
-[assert_continues]
-fn test_parse() {
+fn test_query_parse() {
 	body := '{
         node(id: 4) {
           id,
@@ -9,8 +9,30 @@ fn test_parse() {
         }
 	}'
 
-	result := parse(body, none) or { panic(err) }
+	result := graphql.parse(body, none) or { panic(err) }
 
-	assert result.kind == Kind.document
+	assert result.kind == graphql.Kind.document
 	assert result.loc?.source.body == body
+}
+
+fn test_github_parse() ! {
+	path := os.real_path('./fixtures/github.graphql')
+
+	body := os.read_file(path)!
+
+	result := graphql.parse(body, none) or { panic(err) }
+
+	assert result.kind == graphql.Kind.document
+	assert result.token_count == 19_882
+}
+
+fn test_simple_parse() ! {
+	path := os.real_path('./fixtures/simple.graphql')
+
+	body := os.read_file(path)!
+
+	result := graphql.parse(body, none) or { panic(err) }
+
+	assert result.kind == graphql.Kind.document
+	assert result.token_count == 175
 }
