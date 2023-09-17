@@ -11,6 +11,38 @@ Work in progress.
 - [ ] Publish to VPM
 - [ ] Documentation
 
+## Usage
+
+### Parsing a .graphql definition file
+
+You can parse any string/file using the `.parse` function.
+It returns a [DocumentNode](./src/graphql/src.graphql.md#documentnode) with al the definitions that were parsed, in a tree structure.
+
+```v
+import graphql
+import os
+
+fn main() {
+    // For files
+    file := os.read_file('path-to-file.graphql')
+
+    // For string inputs
+    // input := 'query {
+    // myQuery(id: 1) {
+    //  name
+    //  age
+    // }
+    //}'
+
+    // max_tokens: number of tokens to parse.
+    // Increasing this means supporting longer queries/schema definitions
+    doc := graphql.parse(file, graphql.ParserOptions{ max_tokens: 25_000 })
+
+    dump(doc.token_count)
+    dump(doc.definitions)
+}
+```
+
 ## Links
 
 - [The V programming language](https://vlang.io/)
