@@ -27,10 +27,12 @@ pub fn get_location(source Source, position int) !SourceLocation {
 
 	for i, matched in compile_and_get_rex(source.body)! {
 		//     // invariant @match.index is int
+		println('>>>>>>> MATCHED LENGTH ${matched.len} (${matched})')
 
 		if i >= position {
 			break
 		}
+
 		last_line_start = i + matched.len
 		line += 1
 	}

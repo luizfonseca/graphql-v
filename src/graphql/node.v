@@ -19,12 +19,17 @@ pub mut:
 pub type TypeSystemExtensionNode = SchemaExtensionNode | TypeExtensionNode
 
 pub type DefinitionNode = DirectiveDefinitionNode
-	| ExecutableDefinitionNode
+	| EnumTypeDefinitionNode
+	| FragmentDefinitionNode
+	| InputObjectTypeDefinitionNode
+	| InterfaceTypeDefinitionNode
+	| ObjectTypeDefinitionNode
 	| OperationDefinitionNode
+	| ScalarTypeDefinitionNode
 	| SchemaDefinitionNode
 	| SchemaExtensionNode
-	| TypeDefinitionNode
 	| TypeExtensionNode
+	| UnionTypeDefinitionNode
 pub type ExecutableDefinitionNode = FragmentDefinitionNode | OperationDefinitionNode
 
 pub struct OperationDefinitionNode {
@@ -54,8 +59,8 @@ pub:
 	kind          Kind = Kind.variable_definition
 	variable      VariableNode
 	@type         TypeNode
-	default_value ?ConstValueNode
-	directives    ?[]ConstDirectiveNode
+	default_value ?ValueNode
+	directives    ?[]DirectiveNode
 pub mut:
 	loc ?Location
 }
@@ -81,13 +86,14 @@ pub type SelectionNode = FieldNode | FragmentSpreadNode | InlineFragmentNode
 pub struct FieldNode {
 pub:
 	kind                  Kind = Kind.field
-	loc                   ?Location
 	alias                 ?NameNode
 	name                  NameNode
 	arguments             ?[]ArgumentNode
 	nullability_assertion ?NullabilityAssertionNode
 	directives            []DirectiveNode
 	selection_set         ?SelectionSetNode
+pub mut:
+	loc ?Location
 }
 
 pub type NullabilityAssertionNode = ErrorBoundaryNode
@@ -122,6 +128,7 @@ pub mut:
 
 // --
 pub type ValueNode = BooleanValueNode
+	| ConstObjectValueNode
 	| EnumValueNode
 	| FloatValueNode
 	| IntValueNode
@@ -140,14 +147,13 @@ pub mut:
 	loc ?Location
 }
 
-pub type ConstValueNode = BooleanValueNode
-	| ConstListValueNode
-	| ConstObjectValueNode
-	| EnumValueNode
-	| FloatValueNode
-	| IntValueNode
-	| NullValueNode
-	| StringValueNode
+interface IArgumentNode {
+	kind Kind
+	name NameNode
+	value ValueNode
+mut:
+	loc ?Location
+}
 
 pub struct ConstArgumentNode {
 pub:
@@ -163,7 +169,7 @@ pub struct FragmentSpreadNode {
 pub:
 	kind       Kind = Kind.fragment_spread
 	name       NameNode
-	directives ?[]string
+	directives ?[]DirectiveNode
 pub mut:
 	loc ?Location
 }
@@ -172,7 +178,7 @@ pub struct InlineFragmentNode {
 pub:
 	kind           Kind = Kind.inline_fragment
 	type_condition ?NamedTypeNode
-	directives     ?[]string
+	directives     ?[]DirectiveNode
 	selection_set  SelectionSetNode
 pub mut:
 	loc ?Location
@@ -183,7 +189,7 @@ pub:
 	kind           Kind = Kind.fragment_definition
 	name           NameNode
 	type_condition NamedTypeNode
-	directives     []string
+	directives     []DirectiveNode
 	selection_set  SelectionSetNode
 pub mut:
 	loc ?Location
@@ -191,103 +197,116 @@ pub mut:
 
 pub struct IntValueNode {
 pub:
-	kind  Kind = Kind.int_value
-	value ?string
+	kind     Kind = Kind.int_value
+	value    ?string
+	is_const bool
 pub mut:
 	loc ?Location
 }
 
 pub struct FloatValueNode {
 pub:
-	kind  Kind = Kind.float_value
-	value ?string
+	kind     Kind = Kind.float_value
+	value    ?string
+	is_const bool
 pub mut:
 	loc ?Location
 }
 
 pub struct StringValueNode {
 pub:
-	kind  Kind = Kind.string_value
-	value ?string
-	block ?bool
+	kind     Kind = Kind.string_value
+	value    ?string
+	block    ?bool
+	is_const bool
 pub mut:
 	loc ?Location
 }
 
 pub struct BooleanValueNode {
 pub:
-	kind  Kind = Kind.boolean
-	value bool
+	kind     Kind = Kind.boolean
+	value    bool
+	is_const bool
 pub mut:
 	loc ?Location
 }
 
 pub struct NullValueNode {
 pub:
-	kind Kind = Kind.null
+	kind     Kind = Kind.null
+	is_const bool
 pub mut:
 	loc ?Location
 }
 
 pub struct EnumValueNode {
 pub:
-	kind  Kind = Kind.enum_value
-	value string
+	kind     Kind = Kind.enum_value
+	value    string
+	is_const bool
 pub mut:
 	loc ?Location
 }
 
 pub struct ListValueNode {
 pub:
-	kind   Kind = Kind.list
-	values []ValueNode
-pub mut:
-	loc ?Location
-}
-
-pub struct ConstListValueNode {
-pub:
-	kind  Kind = Kind.list
-	value []ConstValueNode
+	kind     Kind = Kind.list
+	values   []ValueNode
+	is_const bool
 pub mut:
 	loc ?Location
 }
 
 pub struct ObjectValueNode {
 pub:
-	kind   Kind = Kind.object
-	fields []ObjectFieldNode
+	kind     Kind = Kind.object
+	fields   []ObjectFieldNode
+	is_const bool
 pub mut:
 	loc ?Location
 }
 
 pub struct ConstObjectValueNode {
 pub:
-	kind   Kind = Kind.object
-	fields []ConstListValueNode
+	kind     Kind = Kind.object
+	fields   []ValueNode
+	is_const bool = true
 pub mut:
 	loc ?Location
 }
 
 pub struct ObjectFieldNode {
 pub:
-	kind  Kind = Kind.object_field
-	name  NameNode
-	value ValueNode
+	kind     Kind = Kind.object_field
+	name     NameNode
+	value    ValueNode
+	is_const bool
 pub mut:
 	loc ?Location
 }
 
 pub struct ConstObjectFieldNode {
 pub:
-	kind  Kind = Kind.object_field
-	name  NameNode
-	value ConstValueNode
+	kind     Kind = Kind.object_field
+	name     NameNode
+	value    ValueNode
+	is_const bool = true
 pub mut:
 	loc ?Location
 }
 
 // Directives
+
+pub type TypeDirectives = DirectiveNode
+
+pub interface IDirectiveNode {
+	kind Kind
+	name NameNode
+	arguments ?[]ArgumentNode
+mut:
+	loc ?Location
+}
 
 pub struct DirectiveNode {
 pub:
@@ -295,43 +314,35 @@ pub:
 	name      NameNode
 	arguments ?[]ArgumentNode
 pub mut:
-	loc ?Location
-}
-
-pub struct ConstDirectiveNode {
-pub:
-	kind      Kind = Kind.directive
-	name      NameNode
-	arguments ?[]ConstArgumentNode
-pub mut:
-	loc ?Location
+	loc      ?Location
+	is_const bool
 }
 
 // Type reference
 
-pub type TypeNode = ListTypeNode | NamedTypeNode | NonNullAssertionNode
+pub type TypeNode = ListTypeNode | NamedTypeNode | NonNullTypeNode
 pub type NonNullType = ListTypeNode | NamedTypeNode
 
 pub struct NamedTypeNode {
 pub:
-	kind Kind = Kind.named_type
-	name NameNode
+	kind      Kind = Kind.named_type
+	node_type NameNode
 pub mut:
 	loc ?Location
 }
 
 pub struct ListTypeNode {
 pub:
-	kind Kind = Kind.list_type
-	name TypeNode
+	kind      Kind = Kind.list_type
+	node_type TypeNode
 pub mut:
 	loc ?Location
 }
 
 pub struct NonNullTypeNode {
 pub:
-	kind Kind = Kind.non_null_type
-	name NonNullType
+	kind      Kind = Kind.non_null_type
+	node_type NonNullType
 pub mut:
 	loc ?Location
 }
@@ -346,7 +357,7 @@ pub struct SchemaDefinitionNode {
 pub:
 	kind            Kind = Kind.schema_definition
 	description     ?StringValueNode
-	directives      ?[]ConstDirectiveNode
+	directives      ?[]DirectiveNode
 	operation_types []OperationTypeDefinitionNode
 pub mut:
 	loc ?Location
@@ -374,7 +385,7 @@ pub struct ScalarTypeDefinitionNode {
 	kind        Kind
 	description ?StringValueNode
 	name        NameNode
-	directives  ?[]ConstDirectiveNode
+	directives  ?[]DirectiveNode
 pub mut:
 	loc ?Location
 }
@@ -384,7 +395,7 @@ pub struct ObjectTypeDefinitionNode {
 	description ?StringValueNode
 	name        NameNode
 	interfaces  ?[]NamedTypeNode
-	directives  ?[]ConstDirectiveNode
+	directives  ?[]DirectiveNode
 	fields      ?[]FieldDefinitionNode
 pub mut:
 	loc ?Location
@@ -396,7 +407,7 @@ pub struct FieldDefinitionNode {
 	name        NameNode
 	arguments   ?[]InputValueDefinitionNode
 	@type       TypeNode
-	directives  ?[]ConstDirectiveNode
+	directives  ?[]DirectiveNode
 pub mut:
 	loc ?Location
 }
@@ -406,8 +417,8 @@ pub struct InputValueDefinitionNode {
 	description   ?StringValueNode
 	name          NameNode
 	@type         TypeNode
-	default_value ?ConstValueNode
-	directives    ?[]ConstDirectiveNode
+	default_value ?ValueNode
+	directives    ?[]DirectiveNode
 pub mut:
 	loc ?Location
 }
@@ -417,7 +428,7 @@ pub struct InterfaceTypeDefinitionNode {
 	description ?StringValueNode
 	name        NameNode
 	interfaces  ?[]NamedTypeNode
-	directives  ?[]ConstDirectiveNode
+	directives  ?[]DirectiveNode
 	fields      ?[]FieldDefinitionNode
 pub mut:
 	loc ?Location
@@ -427,7 +438,7 @@ pub struct UnionTypeDefinitionNode {
 	kind        Kind = Kind.union_type_definition
 	description ?StringValueNode
 	name        NameNode
-	directives  ?[]ConstDirectiveNode
+	directives  ?[]DirectiveNode
 	types       ?[]NamedTypeNode
 pub mut:
 	loc ?Location
@@ -437,7 +448,7 @@ pub struct EnumTypeDefinitionNode {
 	kind        Kind = Kind.enum_type_definition
 	description ?StringValueNode
 	name        NameNode
-	directives  ?[]ConstDirectiveNode
+	directives  ?[]DirectiveNode
 	values      ?[]EnumValueDefinitionNode
 pub mut:
 	loc ?Location
@@ -447,7 +458,7 @@ pub struct EnumValueDefinitionNode {
 	kind        Kind = Kind.enum_value_definition
 	description ?StringValueNode
 	name        NameNode
-	directives  ?[]ConstDirectiveNode
+	directives  ?[]DirectiveNode
 pub mut:
 	loc ?Location
 }
@@ -456,7 +467,7 @@ pub struct InputObjectTypeDefinitionNode {
 	kind        Kind = Kind.input_object_type_definition
 	description ?StringValueNode
 	name        NameNode
-	directives  ?[]ConstDirectiveNode
+	directives  ?[]DirectiveNode
 	fields      ?[]InputValueDefinitionNode
 pub mut:
 	loc ?Location
@@ -475,7 +486,7 @@ pub mut:
 
 pub struct SchemaExtensionNode {
 	kind            Kind = Kind.schema_extension
-	directives      ?[]ConstDirectiveNode
+	directives      ?[]DirectiveNode
 	operation_types ?[]OperationTypeDefinitionNode
 pub mut:
 	loc ?Location
@@ -493,7 +504,7 @@ pub type TypeExtensionNode = EnumTypeExtensionNode
 pub struct ScalarTypeExtensionNode {
 	kind       Kind = Kind.scalar_type_extension
 	name       NameNode
-	directives ?[]ConstDirectiveNode
+	directives ?[]DirectiveNode
 pub mut:
 	loc ?Location
 }
@@ -502,7 +513,7 @@ pub struct ObjectTypeExtensionNode {
 	kind       Kind = Kind.object_type_extension
 	name       NameNode
 	interfaces ?[]NamedTypeNode
-	directives ?[]ConstDirectiveNode
+	directives ?[]DirectiveNode
 	fields     ?[]FieldDefinitionNode
 pub mut:
 	loc ?Location
@@ -512,7 +523,7 @@ pub struct InterfaceTypeExtensionNode {
 	kind       Kind = Kind.interface_type_extension
 	name       NameNode
 	interfaces ?[]NamedTypeNode
-	directives ?[]ConstDirectiveNode
+	directives ?[]DirectiveNode
 	fields     ?[]FieldDefinitionNode
 pub mut:
 	loc ?Location
@@ -521,7 +532,7 @@ pub mut:
 pub struct UnionTypeExtensionNode {
 	kind       Kind = Kind.union_type_extension
 	name       NameNode
-	directives ?[]ConstDirectiveNode
+	directives ?[]DirectiveNode
 	types      ?[]NamedTypeNode
 pub mut:
 	loc ?Location
@@ -530,7 +541,7 @@ pub mut:
 pub struct EnumTypeExtensionNode {
 	kind       Kind = Kind.enum_type_extension
 	name       NameNode
-	directives ?[]ConstDirectiveNode
+	directives ?[]DirectiveNode
 	values     ?[]EnumValueDefinitionNode
 pub mut:
 	loc ?Location
@@ -539,7 +550,7 @@ pub mut:
 pub struct InputObjectTypeExtensionNode {
 	kind       Kind = Kind.object_type_extension
 	name       NameNode
-	directives ?[]ConstDirectiveNode
+	directives ?[]DirectiveNode
 	fields     ?[]InputValueDefinitionNode
 pub mut:
 	loc ?Location

@@ -3,8 +3,8 @@ module graphql
 
 struct LocationOffset {
 pub:
-	line   i64 = 1
-	column i64 = 1
+	line   int
+	column int
 }
 
 // A representation of source input to GraphQL. The `name` and `locationOffset` parameters are

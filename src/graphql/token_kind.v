@@ -28,6 +28,8 @@ const (
 	}
 )
 
+// An exported enum describing the different kinds of tokens that the
+// lexer emits.
 pub enum TokenKind {
 	sof
 	eof

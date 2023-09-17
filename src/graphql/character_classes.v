@@ -45,7 +45,7 @@ fn is_letter(code int) bool {
  * ```
  * @internal
 */
-fn is_name_start(code int) bool {
+fn is_name_start(code u8) bool {
 	return is_letter(code) || code == 0x005f
 }
 
@@ -58,6 +58,30 @@ fn is_name_start(code int) bool {
  * ```
  * @internal
 */
-fn is_name_continue(code int) bool {
+fn is_name_continue(code u8) bool {
 	return is_letter(code) || is_digit(code) || code == 0x005f
+}
+
+fn is_unicode_scalar_value(code int) bool {
+	return (code >= 0x0000 && code <= 0xd7ff) || (code >= 0xe000 && code <= 0x10ffff)
+}
+
+/**
+ * The GraphQL specification defines source text as a sequence of unicode scalar
+ * values (which Unicode defines to exclude surrogate code points). However
+ * JavaScript defines strings as a sequence of UTF-16 code units which may
+ * include surrogates. A surrogate pair is a valid source character as it
+ * encodes a supplementary code point (above U+FFFF), but unpaired surrogate
+ * code points are not valid source characters.
+*/
+fn is_supplementary_code_point(body string, location int) bool {
+	return is_leading_surrogate(body[location]) && is_trailing_surrogate(body[location + 1])
+}
+
+fn is_leading_surrogate(code int) bool {
+	return code >= 0xd800 && code <= 0xdbff
+}
+
+fn is_trailing_surrogate(code int) bool {
+	return code >= 0xdc00 && code <= 0xdfff
 }

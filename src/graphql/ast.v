@@ -52,8 +52,8 @@ mut:
 	// Tokens exist as nodes in a double-linked-list amongst all tokens
 	// including ignored tokens. <SOF> is always the first node and <EOF>
 	// the last.
-	prev ?Token
-	next ?Token
+	prev ?&Token
+	next ?&Token
 }
 
 fn Token.new(kind TokenKind, start int, end int, line int, column int) Token {

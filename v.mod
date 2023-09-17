@@ -1,5 +1,5 @@
 Module {
-	name: 'something'
+	name: 'graphql-v'
 	description: ''
 	version: ''
 	license: ''

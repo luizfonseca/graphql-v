@@ -10,7 +10,8 @@ fn dedent_block_string_lines(lines []string) []string {
 	mut first_non_empty_line := 0
 	mut last_non_empty_line := -1
 
-	for i, line in lines {
+	for i := 0; i < lines.len; i++ {
+		line := lines[i]
 		indent := leading_whitespace(line)
 
 		if indent == line.len {
@@ -28,15 +29,30 @@ fn dedent_block_string_lines(lines []string) []string {
 		}
 	}
 
-	return lines.map(fn [lines, common_indent] (line string) string {
-		return if lines.index(line) == 0 { line } else { line[common_indent..] }
-	})[first_non_empty_line..last_non_empty_line + 1]
+	new_lines := lines.map(fn [lines, common_indent] (line string) string {
+		if lines.index(line) == 0 {
+			return line
+		} else {
+			// EDGE case: sometimes commonIndent can be greater than the bounds here. IN JS if you
+			// call string.slice(number_greater_than_list_len) it will return an empty string but
+			// not in Vlang (index out of bounds)
+			if common_indent >= line.len {
+				return ''
+			}
+			return line[common_indent..]
+		}
+	})
+
+	println(new_lines)
+
+	return new_lines[first_non_empty_line..last_non_empty_line + 1]
 }
 
 // Helper function to find leading whitespace in a string.
 fn leading_whitespace(str string) int {
 	mut counter := 0
-	for i := 0; i < str.len && is_white_space(str[i]); i++ {
+
+	for i := 0; counter < str.len && is_white_space(str[counter]); i++ {
 		counter += i
 	}
 	return counter

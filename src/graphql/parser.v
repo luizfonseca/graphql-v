@@ -5,13 +5,13 @@ pub:
 	// By default, the parser creates AST nodes that know the location
 	// in the source that they correspond to. This configuration flag
 	// disables that behavior for performance or testing.
-	no_location ?bool
+	no_location bool
 	// Parser CPU and memory usage is linear to the number of tokens in a document
 	// however in extreme cases it becomes quadratic due to memory exhaustion.
 	// Parsing happens before validation so even invalid queries can burn lots of
 	// CPU time and memory.
 	// To prevent this you can set a maximum number of tokens allowed within a document.
-	max_tokens int = 1000
+	max_tokens int = 1_000
 	// @deprecated
 	allow_legacy_fragment_variables            ?bool
 	experimental_client_controlled_nullability ?bool
@@ -46,7 +46,7 @@ fn Parser.new(source SourceOrString, options ?ParserOptions) !Parser {
 
 pub fn parse(source SourceOrString, options ?ParserOptions) !DocumentNode {
 	mut parser := Parser.new(source, options)!
-	return parser.parse_document() or { panic(err) }
+	return parser.parse_document()!
 }
 
 // pub fn parse_value(source SourceOrString, options ?ParserOptions) !ValueNode {
@@ -84,7 +84,8 @@ fn (mut p Parser) parse_value_literal(is_const bool) !ValueNode {
 			})!
 		}
 		.string_value, .block_string {
-			return p.parse_string_literal() or { StringValueNode{} }
+			println('----- PARSING STRING LITERAL')
+			return p.parse_string_literal()!
 		}
 		.dollar {
 			if is_const {
@@ -94,6 +95,8 @@ fn (mut p Parser) parse_value_literal(is_const bool) !ValueNode {
 					var_name := p.lexer.token.value
 					error('Unexpected variable ${var_name}')
 				} else {
+					println('UNEXPECTED: parse_value_literal (dollar)')
+
 					p.unexpected(token)!
 				}
 			}
@@ -130,6 +133,7 @@ fn (mut p Parser) parse_value_literal(is_const bool) !ValueNode {
 			}
 		}
 		else {
+			println('UNEXPECTED: parse_value_literal')
 			p.unexpected(none)!
 			return error('')
 		}
@@ -189,20 +193,28 @@ fn (mut p Parser) parse_name() !NameNode {
 	token := p.expect_token(TokenKind.name)!
 	node := p.node[NameNode](token, mut NameNode{
 		kind: Kind.name
-		value: token.value or { '' }
+		value: token.value or { panic('Missing name node ${err}') }
 	})!
 
 	return node
 }
 
 fn (mut p Parser) parse_document() !DocumentNode {
-	definitions := p.many(TokenKind.sof, p.parse_definition, TokenKind.eof)
-	doc := p.node[DocumentNode](p.lexer.token, mut DocumentNode{
+	p.expect_token(TokenKind.sof)!
+	mut definitions := []DefinitionNode{}
+
+	for {
+		definitions << p.parse_definition()!
+
+		if p.expect_optional_token(TokenKind.eof) {
+			break
+		}
+	}
+
+	return p.node[DocumentNode](p.lexer.token, mut DocumentNode{
 		kind: Kind.document
 		definitions: definitions
-	}) or { panic(err) }
-
-	return doc
+	})!
 }
 
 // Definition :
@@ -226,56 +238,465 @@ fn (mut p Parser) parse_document() !DocumentNode {
 //   - UnionTypeDefinition
 //   - EnumTypeDefinition
 //   - InputObjectTypeDefinition
-fn (mut p Parser) parse_definition() !DefinitionNode {
-	if p.peek(TokenKind.brace_l) or { false } {
-		return p.parse_operation_definition()!
+fn (mut parser Parser) parse_definition() !DefinitionNode {
+	println('!!parse_definition')
+
+	if parser.peek(TokenKind.brace_l) {
+		return parser.parse_operation_definition()!
 	}
 
-	has_description := p.peek_description()
+	// Many definitions begin with a description and require a lookahead.
+	has_description := parser.peek_description()
+
 	keyword_token := if has_description {
-		p.lexer.lookahead() or { panic('') }
+		t := parser.lexer.lookahead()
+		println('+++ FOUND next token ${t.value}')
+		t
 	} else {
-		p.lexer.token
+		t := parser.lexer.token
+		println('+++ USING CURRENT TOKEN ${t.value}')
+		t
 	}
 
-	println(keyword_token.value)
+	println('+++ NAME ${keyword_token.kind.gql_str()} VALUE: ${keyword_token.value}')
 	if keyword_token.kind == TokenKind.name {
-		match keyword_token.value or { '' } {
+		println('KEYWORD ${keyword_token.value}')
+		match keyword_token.value or { panic(err) } {
 			'schema' {
-				return p.parse_schema_definition()!
+				return parser.parse_schema_definition()!
+			}
+			'scalar' {
+				return parser.parse_scalar_type_definition()!
+			}
+			'type' {
+				return parser.parse_object_type_definition()!
+			}
+			'interface' {
+				return parser.parse_interface_type_definition()!
+			}
+			'union' {
+				return parser.parse_union_type_definition()!
+			}
+			'enum' {
+				return parser.parse_enum_type_definition()!
+			}
+			'input' {
+				return parser.parse_input_object_type_definition()!
+			}
+			'directive' {
+				// return parser.parsedire
 			}
 			else {
-				return error('parse_definition')
+				// Unsupported
+			}
+		}
+
+		if has_description {
+			return error('Unexpected description for "${keyword_token.to_json()}", descriptions only in type definitions')
+		}
+
+		match keyword_token.value or { '' } {
+			'query', 'mutation', 'subscription' {
+				return parser.parse_operation_definition()!
+			}
+			'fragment' {
+				return parser.parse_fragment_definition()
+			}
+			else {
+				return error('not supported')
 			}
 		}
 	}
 
-	return error('Could not parse definitions')
+	return error('Unexpected ${keyword_token}')
+}
+
+fn (mut parser Parser) parse_enum_type_definition() !EnumTypeDefinitionNode {
+	start := parser.lexer.token
+	description := parser.parse_description()
+
+	parser.expect_keyword('enum')!
+
+	name := parser.parse_enum_value_name()!
+	directives := parser.parse_const_directives()!
+	values := parser.parse_enum_values_definition()!
+
+	return parser.node[EnumTypeDefinitionNode](start, mut EnumTypeDefinitionNode{
+		kind: Kind.enum_type_definition
+		name: name
+		directives: directives
+		values: values
+		description: description
+	})
+}
+
+fn (mut parser Parser) parse_enum_values_definition() ![]EnumValueDefinitionNode {
+	mut nodes := []EnumValueDefinitionNode{}
+
+	// optional_many
+	if parser.expect_optional_token(TokenKind.brace_l) {
+		for {
+			nodes << parser.parse_enum_value_definition()!
+
+			if parser.expect_optional_token(TokenKind.brace_r) {
+				break
+			}
+		}
+	}
+
+	return nodes
+}
+
+fn (mut parser Parser) parse_enum_value_definition() !EnumValueDefinitionNode {
+	start := parser.lexer.token
+	description := parser.parse_description()
+	name := parser.parse_name()!
+	directives := parser.parse_const_directives()!
+
+	return parser.node[EnumValueDefinitionNode](start, mut EnumValueDefinitionNode{
+		kind: Kind.enum_value_definition
+		name: name
+		description: description
+		directives: directives
+	})
+}
+
+fn (mut parser Parser) parse_enum_value_name() !NameNode {
+	match parser.lexer.token.value {
+		'true', 'false', 'null' {
+			return error('${parser.lexer.token.value} is reserved and cannot be used for an enum value')
+		}
+	}
+
+	return parser.parse_name()!
+}
+
+fn (mut parser Parser) parse_union_type_definition() !UnionTypeDefinitionNode {
+	start := parser.lexer.token
+	description := parser.parse_description()
+
+	parser.expect_keyword('union')!
+
+	name := parser.parse_name()!
+	directives := parser.parse_const_directives()!
+	types := parser.parse_union_member_types()!
+
+	return parser.node[UnionTypeDefinitionNode](start, mut UnionTypeDefinitionNode{
+		kind: Kind.union_type_definition
+		name: name
+		directives: directives
+		types: types
+		description: description
+	})
+}
+
+fn (mut parser Parser) parse_union_member_types() ![]NamedTypeNode {
+	mut nodes := []NamedTypeNode{}
+
+	// delimited_many
+	if parser.expect_optional_token(TokenKind.equals) {
+		parser.expect_optional_token(TokenKind.pipe)
+
+		for {
+			nodes << parser.parse_named_type()!
+
+			if !parser.expect_optional_token(TokenKind.equals) {
+				break
+			}
+		}
+	}
+
+	return nodes
+}
+
+fn (mut parser Parser) parse_input_object_type_definition() !InputObjectTypeDefinitionNode {
+	start := parser.lexer.token
+	description := parser.parse_description()
+
+	parser.expect_keyword('input')!
+
+	name := parser.parse_name()!
+	directives := parser.parse_directives(true)!
+	fields := parser.parse_input_fields_definition()!
+
+	return parser.node[InputObjectTypeDefinitionNode](start, mut InputObjectTypeDefinitionNode{
+		kind: Kind.input_object_type_definition
+		name: name
+		directives: directives
+		fields: fields
+		description: description
+	})
+}
+
+fn (mut parser Parser) parse_interface_type_definition() !InterfaceTypeDefinitionNode {
+	start := parser.lexer.token
+	description := parser.parse_description()
+
+	parser.expect_keyword('interface')!
+
+	name := parser.parse_name()!
+	interfaces := parser.parse_implements_interfaces()!
+	directives := parser.parse_directives(true)!
+	fields := parser.parse_fields_definition()!
+
+	return parser.node[InterfaceTypeDefinitionNode](start, mut InterfaceTypeDefinitionNode{
+		kind: Kind.scalar_type_definition
+		name: name
+		fields: fields
+		interfaces: interfaces
+		directives: directives
+		description: description
+	})
+}
+
+fn (mut parser Parser) parse_input_object_type_extension() !InputObjectTypeExtensionNode {
+	start := parser.lexer.token
+
+	parser.expect_keyword('extend')!
+	parser.expect_keyword('input')!
+
+	name := parser.parse_name()!
+
+	directives := parser.parse_directives(true)!
+	fields := parser.parse_input_fields_definition()!
+
+	if directives.len == 0 && fields.len == 0 {
+		parser.unexpected(parser.lexer.token)!
+	}
+
+	return parser.node[InputObjectTypeExtensionNode](start, mut InputObjectTypeExtensionNode{
+		kind: Kind.input_object_type_extension
+		name: name
+		directives: directives
+		fields: fields
+	})
+}
+
+fn (mut parser Parser) parse_input_value_def() !InputValueDefinitionNode {
+	start := parser.lexer.token
+	description := parser.parse_description()
+	name := parser.parse_name()!
+
+	parser.expect_token(TokenKind.colon)!
+
+	type_node := parser.parse_type_reference()!
+
+	if parser.expect_optional_token(TokenKind.equals) {
+		default_value := parser.parse_const_value_literal()
+		directives := parser.parse_directives(true)!
+		return parser.node[InputValueDefinitionNode](start, mut InputValueDefinitionNode{
+			kind: Kind.input_value_definition
+			description: description
+			name: name
+			@type: type_node
+			default_value: default_value
+			directives: directives
+		})
+	}
+
+	directives := parser.parse_directives(true)!
+	return parser.node[InputValueDefinitionNode](start, mut InputValueDefinitionNode{
+		kind: Kind.input_value_definition
+		description: description
+		name: name
+		@type: type_node
+		default_value: none
+		directives: directives
+	})!
+}
+
+fn (mut parser Parser) parse_input_fields_definition() ![]InputValueDefinitionNode {
+	mut nodes := []InputValueDefinitionNode{}
+
+	// optional_many
+	if parser.expect_optional_token(TokenKind.brace_l) {
+		for {
+			nodes << parser.parse_input_value_def()!
+
+			if parser.expect_optional_token(TokenKind.brace_r) {
+				break
+			}
+		}
+	}
+
+	return nodes
+}
+
+fn (mut parser Parser) parse_object_type_definition() !ObjectTypeDefinitionNode {
+	start := parser.lexer.token
+	description := parser.parse_description()
+
+	parser.expect_keyword('type')!
+
+	name := parser.parse_name()!
+	interfaces := parser.parse_implements_interfaces()!
+	directives := parser.parse_directives(true)!
+	fields := parser.parse_fields_definition()!
+
+	return parser.node[ObjectTypeDefinitionNode](start, mut ObjectTypeDefinitionNode{
+		kind: Kind.object_type_definition
+		description: description
+		name: name
+		interfaces: interfaces
+		directives: directives
+		fields: fields
+	})
+}
+
+fn (mut parser Parser) parse_implements_interfaces() ![]NamedTypeNode {
+	mut nodes := []NamedTypeNode{}
+	if parser.expect_optional_keyword('implements')! {
+		parser.expect_optional_token(TokenKind.amp)
+
+		for {
+			nodes << parser.parse_named_type()!
+
+			if !parser.expect_optional_token(TokenKind.amp) {
+				break
+			}
+		}
+	}
+
+	return nodes
+}
+
+fn (mut parser Parser) parse_fields_definition() ![]FieldDefinitionNode {
+	mut nodes := []FieldDefinitionNode{}
+
+	// optional_many
+	if parser.expect_optional_token(TokenKind.brace_l) {
+		for {
+			nodes << parser.parse_field_definition()!
+
+			if parser.expect_optional_token(TokenKind.brace_r) {
+				break
+			}
+		}
+	}
+
+	return nodes
+}
+
+fn (mut parser Parser) parse_field_definition() !FieldDefinitionNode {
+	start := parser.lexer.token
+	description := parser.parse_description()
+	name := parser.parse_name()!
+	args := parser.parse_argument_defs()!
+
+	parser.expect_token(TokenKind.colon)!
+
+	@type := parser.parse_type_reference()!
+	directives := parser.parse_directives(true)!
+
+	return parser.node[FieldDefinitionNode](start, mut FieldDefinitionNode{
+		kind: Kind.field_definition
+		description: description
+		name: name
+		arguments: args
+		directives: directives
+		@type: @type
+	})
+}
+
+fn (mut parser Parser) parse_argument_defs() ![]InputValueDefinitionNode {
+	mut nodes := []InputValueDefinitionNode{}
+
+	println('FN: parse_argument_defs')
+	if parser.expect_optional_token(TokenKind.paren_l) {
+		for {
+			nodes << parser.parse_input_value_def()!
+
+			if parser.expect_optional_token(TokenKind.paren_r) {
+				break
+			}
+		}
+	}
+
+	return nodes
+}
+
+fn (mut parser Parser) parse_type_reference() !TypeNode {
+	start := parser.lexer.token
+
+	mut named_type_node := ?NamedTypeNode{}
+	mut type_node := ListTypeNode{}
+
+	if parser.expect_optional_token(TokenKind.bracket_l) {
+		inner_type := parser.parse_type_reference()!
+
+		parser.expect_token(TokenKind.bracket_r)!
+
+		type_node = parser.node[ListTypeNode](start, mut ListTypeNode{
+			kind: Kind.list_type
+			node_type: inner_type
+		})!
+	} else {
+		named_type_node = parser.parse_named_type()!
+	}
+
+	if final_type := named_type_node {
+		if parser.expect_optional_token(TokenKind.bang) {
+			return TypeNode(parser.node(start, mut NonNullTypeNode{
+				kind: Kind.non_null_type
+				node_type: final_type
+			}))
+		}
+
+		return final_type
+	} else {
+		if parser.expect_optional_token(TokenKind.bang) {
+			return TypeNode(parser.node(start, mut NonNullTypeNode{
+				kind: Kind.non_null_type
+				node_type: type_node
+			}))
+		}
+
+		return type_node
+	}
+
+	return error('could not return type reference')
+}
+
+fn (mut parser Parser) parse_scalar_type_definition() !ScalarTypeDefinitionNode {
+	start := parser.lexer.token
+	description := parser.parse_description()
+
+	parser.expect_keyword('scalar')!
+
+	name := parser.parse_name()!
+	directives := parser.parse_directives(true)!
+
+	return parser.node[ScalarTypeDefinitionNode](start, mut ScalarTypeDefinitionNode{
+		kind: Kind.scalar_type_extension
+		description: description
+		name: name
+		directives: directives
+	})
 }
 
 fn (mut p Parser) parse_description() ?StringValueNode {
 	if p.peek_description() {
-		return p.parse_string_literal()
+		return p.parse_string_literal() or { none }
 	}
 
 	return none
 }
 
-fn (mut p Parser) parse_string_literal() ?StringValueNode {
+fn (mut p Parser) parse_string_literal() !StringValueNode {
 	token := p.lexer.token
-	p.advance_lexer() or { return none }
+	p.advance_lexer()!
 
 	node := p.node[StringValueNode](token, mut StringValueNode{
 		kind: Kind.string_value
 		value: token.value
 		block: token.kind == TokenKind.block_string
-	}) or { return none }
+	})!
 
 	return node
 }
 
-fn (p Parser) parse_const_value_literal() ?ConstValueNode {
-	return none
+fn (mut parser Parser) parse_const_value_literal() ?ValueNode {
+	return parser.parse_value_literal(true) or { none }
 }
 
 fn (mut p Parser) parse_schema_definition() !SchemaDefinitionNode {
@@ -283,8 +704,17 @@ fn (mut p Parser) parse_schema_definition() !SchemaDefinitionNode {
 	description := p.parse_description()
 
 	p.expect_keyword('schema')!
+	p.expect_token(TokenKind.brace_l)!
 
-	operation_types := p.many(TokenKind.brace_l, p.parse_operation_type_definition, TokenKind.brace_r)
+	mut operation_types := []OperationTypeDefinitionNode{}
+
+	for {
+		operation_types << p.parse_operation_type_definition()!
+
+		if p.expect_optional_token(TokenKind.brace_r) {
+			break
+		}
+	}
 
 	node := p.node[SchemaDefinitionNode](start, mut SchemaDefinitionNode{
 		kind: Kind.schema_definition
@@ -296,45 +726,217 @@ fn (mut p Parser) parse_schema_definition() !SchemaDefinitionNode {
 	return node
 }
 
-fn (mut p Parser) parse_operation_definition() !OperationDefinitionNode {
-	start := p.lexer.token
+fn (mut parser Parser) parse_operation_definition() !OperationDefinitionNode {
+	println('..parsing operation')
+	start := parser.lexer.token
 
-	if p.peek(TokenKind.brace_l)! {
-		node := p.node[OperationDefinitionNode](start, mut OperationDefinitionNode{
+	if parser.peek(TokenKind.brace_l) {
+		println('...next node is brace_l')
+		node := parser.node[OperationDefinitionNode](start, mut OperationDefinitionNode{
 			kind: Kind.operation_definition
 			operation: OperationTypeNode.query
 			name: none
 			variable_definitions: []
 			directives: []
-			selection_set: SelectionSetNode{}
+			selection_set: parser.parse_selection_set()
 		})!
 
+		println('...created operationdefinitionnode')
 		return node
 	}
 
-	operation := p.parse_operation_type()!
-	mut name := NameNode{}
+	println('...operation defintino')
 
-	if p.peek(TokenKind.name)! {
-		name = p.parse_name()!
+	operation := parser.parse_operation_type()!
+	mut name := ?NameNode{}
+
+	if parser.peek(TokenKind.name) {
+		name = parser.parse_name()!
 	}
 
-	node := p.node[OperationDefinitionNode](start, mut OperationDefinitionNode{
+	return parser.node[OperationDefinitionNode](start, mut OperationDefinitionNode{
 		kind: Kind.operation_definition
 		operation: operation
 		name: name
-		variable_definitions: []
-		directives: none
-		selection_set: SelectionSetNode{}
+		variable_definitions: parser.parse_variable_definitions()
+		directives: parser.parse_directives(false) or { panic(err) }
+		selection_set: parser.parse_selection_set()
 	})!
+}
 
-	return node
+fn (mut parser Parser) scoped_parse_section() SelectionNode {
+	return parser.parse_selection()
+}
+
+fn (mut parser Parser) parse_selection_set() SelectionSetNode {
+	println('...parsing selectionsetnode')
+	parser.expect_token(TokenKind.brace_l) or { panic(err) }
+
+	mut selections := []SelectionNode{}
+
+	for {
+		selections << parser.parse_selection()
+
+		if parser.expect_optional_token(TokenKind.brace_r) {
+			break
+		}
+	}
+
+	return parser.node[SelectionSetNode](parser.lexer.token, mut SelectionSetNode{
+		kind: Kind.selection_set
+		selections: selections
+	}) or { panic('could not create selection nodes') }
+}
+
+fn (mut parser Parser) parse_selection() SelectionNode {
+	if parser.peek(TokenKind.spread) {
+		return parser.parse_fragment()
+	} else {
+		return parser.parse_field()
+	}
+}
+
+fn (mut parser Parser) parse_fragment() FragmentSpreadNode {
+	start := parser.lexer.token
+	parser.expect_token(TokenKind.spread) or { panic(err) }
+
+	has_type_condition := parser.expect_optional_keyword('on') or { false }
+
+	if !has_type_condition && parser.peek(TokenKind.name) {
+		return parser.node[FragmentSpreadNode](start, mut FragmentSpreadNode{
+			kind: Kind.fragment_spread
+			name: NameNode{}
+			directives: parser.parse_directives(false) or { panic(err) }
+		}) or { panic(err) }
+	}
+
+	return parser.node[FragmentSpreadNode](start, mut FragmentSpreadNode{
+		kind: Kind.fragment_spread
+		name: NameNode{}
+		directives: parser.parse_directives(false) or { panic(err) }
+	}) or { panic(err) }
+}
+
+fn (mut parser Parser) parse_fragment_definition() FragmentDefinitionNode {
+	start := parser.lexer.token
+	parser.expect_keyword('fragment') or { panic(err) }
+
+	return parser.node[FragmentDefinitionNode](start, mut FragmentDefinitionNode{
+		kind: Kind.fragment_definition
+		directives: parser.parse_directives(false) or { panic(err) }
+		selection_set: parser.parse_selection_set()
+	}) or { panic(err) }
+}
+
+fn (mut parser Parser) parse_field() FieldNode {
+	start := parser.lexer.token
+
+	name_or_alias := parser.parse_name() or { panic('could not parse field name ${err}') }
+	mut name := NameNode{}
+	mut alias := NameNode{}
+
+	if parser.expect_optional_token(TokenKind.colon) {
+		alias = name_or_alias
+		name = parser.parse_name() or { panic('cant parse alias name') }
+	} else {
+		name = name_or_alias
+	}
+
+	selection_set := fn [mut parser] () ?SelectionSetNode {
+		if parser.peek(TokenKind.brace_l) {
+			parser.parse_selection_set()
+		}
+
+		return none
+	}
+
+	return parser.node[FieldNode](start, mut FieldNode{
+		kind: Kind.field
+		alias: alias
+		name: name
+		arguments: parser.parse_arguments(false)
+		nullability_assertion: none
+		directives: parser.parse_directives(false) or { panic(err) }
+		selection_set: selection_set()
+	}) or { panic(err) }
+}
+
+fn (mut parser Parser) parse_argument_not_const() ArgumentNode {
+	return parser.parse_argument(false)
+}
+
+fn (mut parser Parser) parse_const_argument() ArgumentNode {
+	return parser.parse_argument(true)
+}
+
+fn (mut parser Parser) parse_arguments(is_const bool) []ArgumentNode {
+	mut nodes := []ArgumentNode{}
+
+	// optional_many
+	if parser.expect_optional_token(TokenKind.paren_l) {
+		for {
+			if is_const {
+				nodes << parser.parse_const_argument()
+			} else {
+				nodes << parser.parse_argument_not_const()
+			}
+
+			if parser.expect_optional_token(TokenKind.paren_r) {
+				break
+			}
+		}
+	}
+
+	return nodes
+}
+
+fn (mut parser Parser) parse_argument(is_const bool) ArgumentNode {
+	start := parser.lexer.token
+	name := parser.parse_name() or { panic(err) }
+
+	parser.expect_token(TokenKind.colon) or { panic(err) }
+
+	return parser.node[ArgumentNode](start, mut ArgumentNode{
+		kind: Kind.argument
+		name: name
+		value: parser.parse_value_literal(is_const) or { panic(err) }
+	}) or { panic(err) }
+}
+
+fn (mut parser Parser) parse_variable_definitions() []VariableDefinitionNode {
+	mut nodes := []VariableDefinitionNode{}
+
+	if parser.expect_optional_token(TokenKind.paren_l) {
+		for {
+			nodes << parser.parse_variable_definition() or { panic(err) }
+
+			if parser.expect_optional_token(TokenKind.paren_r) {
+				break
+			}
+		}
+	}
+
+	return nodes
+}
+
+fn (mut parser Parser) parse_variable_definition() !VariableDefinitionNode {
+	default_value := if parser.expect_optional_token(TokenKind.equals) {
+		parser.parse_const_value_literal()
+	} else {
+		none
+	}
+
+	return parser.node[VariableDefinitionNode](parser.lexer.token, mut VariableDefinitionNode{
+		kind: Kind.variable_definition
+		variable: parser.parse_variable()!
+		default_value: default_value
+	})!
 }
 
 fn (mut p Parser) parse_named_type() !NamedTypeNode {
 	node := p.node[NamedTypeNode](p.lexer.token, mut NamedTypeNode{
 		kind: Kind.named_type
-		name: p.parse_name()!
+		node_type: p.parse_name()!
 	})!
 
 	return node
@@ -377,29 +979,24 @@ fn (mut p Parser) parse_operation_type_definition() !OperationTypeDefinitionNode
 }
 
 fn (p Parser) peek_description() bool {
-	return p.peek(TokenKind.string_value) or { false } || p.peek(TokenKind.block_string) or {
-		false
-	}
+	return p.peek(TokenKind.string_value) || p.peek(TokenKind.block_string)
 }
 
 // Returns a node that, if configured to do so, sets a "loc" field as a
 // location object, used to identify the place in the source that created a
 // given parsed object.
-fn (p Parser) node[T](start_token Token, mut node ASTNodeInterface) !T {
-	println('IN!')
-	if !p.options.no_location? {
-		node.loc = Location.new(start_token, p.lexer.last_token, p.lexer.source)
+fn (parser Parser) node[T](start_token Token, mut node T) !T {
+	if !parser.options.no_location {
+		node.loc = Location.new(start_token, parser.lexer.last_token, parser.lexer.source)
 	}
 
-	if mut node is T {
-		return *node
-	}
+	return node
 
-	return error('failed to convert node')
+	// return error('failed to convert node')
 }
 
 // Determines if the next token is of a given kind
-fn (p Parser) peek(kind TokenKind) !bool {
+fn (p Parser) peek(kind TokenKind) bool {
 	return p.lexer.token.kind == kind
 }
 
@@ -408,21 +1005,24 @@ fn (p Parser) peek(kind TokenKind) !bool {
 fn (mut p Parser) expect_token(kind TokenKind) !Token {
 	token := p.lexer.token
 
-	if token.kind != kind {
-		error('Expected ${kind.gql_str()} got ${token.kind.gql_str()}')
+	println('prev token ${token.kind}')
+	if token.kind == kind {
+		p.advance_lexer()!
+		return token
 	}
 
-	p.advance_lexer()!
-	return token
+	return error('Expected ${kind.gql_str()} got ${token.kind.gql_str()}')
 }
 
 // If the next token is of the given kind, return "true" after advancing the lexer.
 // Otherwise, do not change the parser state and return "false".
-fn (mut p Parser) expect_optional_token(kind TokenKind) !bool {
+fn (mut p Parser) expect_optional_token(kind TokenKind) bool {
 	token := p.lexer.token
 
+	println('current lexer token: ${token.kind}, expected: ${kind}')
+
 	if token.kind == kind {
-		p.advance_lexer()!
+		p.advance_lexer() or { true }
 		return true
 	}
 
@@ -435,8 +1035,11 @@ fn (mut p Parser) expect_keyword(value string) ! {
 	token := p.lexer.token
 	val := token.value or { '' }
 
+	println('>>>>> TOKEN (${token.kind}) value: "${val}" compared to expected "${value}"')
+
 	if token.kind == TokenKind.name && val == value {
 		p.advance_lexer()!
+		return
 	}
 
 	return error('Expected ${value}, got ${token.value}')
@@ -457,15 +1060,17 @@ fn (mut p Parser) expect_optional_keyword(value string) !bool {
 }
 
 // Helper function for creating an error when an unexpected lexed token is encountered.
-fn (p Parser) unexpected(at_token ?Token) ! {
-	match at_token {
+fn (parser Parser) unexpected(at_token ?Token) ! {
+	token := match at_token {
 		none {
-			error('Unexpected token ${at_token.str()}')
+			parser.lexer.token
 		}
 		else {
 			at_token
 		}
 	}
+
+	return error('Unexpected token ${token.to_json()}')
 }
 
 // Returns a possibly empty list of parse nodes, determined by the parseFn.
@@ -476,7 +1081,7 @@ fn (mut p Parser) any[T](open_kind TokenKind, parse_fn fn () T, close_kind Token
 	mut nodes := []T{}
 
 	for {
-		if p.expect_optional_token(close_kind) or { false } {
+		if p.expect_optional_token(close_kind) {
 			break
 		}
 
@@ -486,44 +1091,7 @@ fn (mut p Parser) any[T](open_kind TokenKind, parse_fn fn () T, close_kind Token
 	return nodes
 }
 
-// Returns a list of parse nodes, determined by the parseFn.
-// It can be empty only if open token is missing otherwise it will always return non-empty list
-// that begins with a lex token of openKind and ends with a lex token of closeKind.
-// Advances the parser to the next lex token after the closing token.
-fn (p Parser) optional_many[T](open_kind TokenKind, parse_fn fn () T, close_kind TokenKind) []T {
-	nodes:
-	[]T{} := []
-
-	if p.expect_optional_token(open_kind) {
-		for {
-			if p.expect_optional_token(close_kind) {
-				break
-			}
-
-			nodes << parse_fn()
-		}
-	}
-
-	return nodes
-}
-
-fn (mut p Parser) many[T](open_kind TokenKind, parse_fn fn () !T, close_kind TokenKind) []T {
-	p.expect_token(open_kind) or { panic(err) }
-	mut nodes := []T{}
-
-	loop1: for {
-		if p.expect_optional_token(close_kind) or { break loop1 } {
-			break loop1
-		}
-
-		result := parse_fn() or { panic(err) }
-		dump(result)
-		nodes << result
-	}
-
-	println('ever finished?')
-	return nodes
-}
+type ManyFn[T] = fn () !T
 
 fn (p Parser) delimited_many[T](delimiter_kind TokenKind, parse_fn fn () T) []T {
 	p.expect_optional_token(delimiter_kind)
@@ -537,22 +1105,59 @@ fn (p Parser) delimited_many[T](delimiter_kind TokenKind, parse_fn fn () T) []T 
 
 		nodes << parse_fn()
 	}
+	println('ever finished?')
 
 	return nodes
 }
 
-fn (mut p Parser) advance_lexer() ! {
-	token := p.lexer.advance() or { panic('could not advance lexer') }
+fn (mut parser Parser) advance_lexer() ! {
+	println('...advancing lexer')
+	token := parser.lexer.advance()
 
-	max_tokens := p.options.max_tokens
+	println('...advanced to ${token.kind} from previous')
 
-	if max_tokens != -1 && token.kind != TokenKind.eof {
-		p.token_counter += 1
+	max_tokens := parser.options.max_tokens
 
-		if p.token_counter > max_tokens {
-			error('Document contains more than ${max_tokens}. Aborting')
+	if token.kind != TokenKind.eof {
+		parser.token_counter += 1
+
+		if parser.token_counter > max_tokens {
+			panic('Document currently contains (${parser.token_counter}) more than the defined max of ${max_tokens} tokens. Aborting')
 		}
 	}
+
+	println('...finished advancing')
+}
+
+fn (mut parser Parser) parse_directive(is_const bool) !DirectiveNode {
+	start := parser.lexer.token
+
+	parser.expect_token(TokenKind.at)!
+
+	return parser.node[DirectiveNode](start, mut DirectiveNode{
+		kind: Kind.directive
+		name: parser.parse_name()!
+		arguments: []
+		is_const: is_const
+	})
+}
+
+fn (mut parser Parser) parse_directives(is_const bool) ![]DirectiveNode {
+	mut directives := []DirectiveNode{}
+
+	for {
+		if !parser.peek(TokenKind.at) {
+			break
+		}
+
+		directives << parser.parse_directive(is_const)!
+	}
+
+	return directives
+}
+
+fn (mut parser Parser) parse_const_directives() ![]DirectiveNode {
+	return parser.parse_directives(true)
 }
 
 fn get_token_kind_desc(kind TokenKind) string {
