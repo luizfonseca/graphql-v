@@ -5,7 +5,7 @@
 Work in progress.
 
 - [x] Language Parser (lexer, parser implementation)
-- [ ] Fixtures are covered 100%
+- [x] Fixtures are covered 100% (GH, Simple)
 - [ ] Integration tests
 - [ ] Schema execute
 - [ ] Publish to VPM
