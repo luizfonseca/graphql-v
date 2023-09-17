@@ -12,6 +12,7 @@ pub struct DocumentNode {
 pub:
 	kind        Kind = Kind.document
 	definitions []DefinitionNode
+	token_count int
 pub mut:
 	loc ?Location
 }

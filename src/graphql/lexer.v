@@ -26,7 +26,7 @@ fn Lexer.new(source Source) Lexer {
 fn (mut lexer Lexer) advance() Token {
 	lexer.last_token = lexer.token
 	token := lexer.lookahead()
-	println('..advancing from ${lexer.token.kind} to ${token.kind}')
+	// println('..advancing from ${lexer.token.kind} to ${token.kind}')
 
 	lexer.token = token
 
@@ -43,12 +43,12 @@ fn (mut lexer Lexer) lookahead() Token {
 			if next := token.next {
 				token = *next
 			} else {
-				println('char ends at ${token.end}')
+				// println('char ends at ${token.end}')
 				mut next_token := read_next_token(mut lexer, token.end) or { panic(err) }
 
-				println('...<< prev token ${token.kind}')
-				println('...>> next token ${next_token.kind}')
-				println('...>> next token VALUE ${next_token.value}')
+				// println('...<< prev token ${token.kind}')
+				// println('...>> next token ${next_token.kind}')
+				// println('...>> next token VALUE ${next_token.value}')
 				token.next = &next_token
 				next_token.prev = &token
 				token = next_token
@@ -70,19 +70,19 @@ fn read_next_token(mut lexer Lexer, start int) !Token {
 	mut body_length := body.len
 	mut position := start
 
-	println('==== BODY_LENGTH ${body_length}')
+	// println('==== BODY_LENGTH ${body_length}')
 
 	for {
-		println('==== POSITION ${position}')
-		println('==== LINE_START ${lexer.line_start}, COLUMN ${lexer.token.column}')
+		// println('==== POSITION ${position}')
+		// println('==== LINE_START ${lexer.line_start}, COLUMN ${lexer.token.column}')
 		if position >= body_length {
-			println('EOF reached')
+			// println('EOF reached')
 			break
 		}
 
 		code := body[position]
 
-		println('code : "${code.ascii_str()}"')
+		// println('code : "${code.ascii_str()}"')
 
 		match code {
 			// Ignored ::
@@ -197,7 +197,7 @@ fn read_next_token(mut lexer Lexer, start int) !Token {
 			0x0022 { // "
 
 				if body[position + 1] == 0x0022 && body[position + 2] == 0x0022 {
-					println('matched comment')
+					// println('matched comment')
 
 					return lexer.read_block_string(position)
 				}
@@ -216,7 +216,7 @@ fn read_next_token(mut lexer Lexer, start int) !Token {
 		// Name
 		if is_name_start(code) {
 			name_token := lexer.read_name(position)
-			println('code (NAME) : ${name_token.value}')
+			// println('code (NAME) : ${name_token.value}')
 			return name_token
 		}
 
@@ -239,7 +239,7 @@ fn (lexer Lexer) read_name(start int) Token {
 
 		code := body[position]
 		if is_name_continue(code) {
-			println('name continuing ${body[start..position]}')
+			// println('name continuing ${body[start..position]}')
 			position += 1
 		} else {
 			break
@@ -446,12 +446,12 @@ fn (mut lexer Lexer) read_block_string(start int) Token {
 			current_line += body[chunk_start..position]
 			block_lines << current_line
 
-			println('dedented')
-			println(dedent_block_string_lines(block_lines).join('\n'))
+			// println('dedented')
+			// println(dedent_block_string_lines(block_lines).join('\n'))
 			token := create_token(lexer, TokenKind.block_string, start, position + 3,
 				dedent_block_string_lines(block_lines).join('\n'))
 
-			println('LINE ${block_lines.len - 1}')
+			// println('LINE ${block_lines.len - 1}')
 			lexer.line += block_lines.len - 1
 			lexer.line_start = line_start
 

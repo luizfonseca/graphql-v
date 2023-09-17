@@ -9,7 +9,7 @@ fn test_parse() {
         }
 	}'
 
-	result := parse(body, ParserOptions{}) or { panic(err) }
+	result := parse(body, none) or { panic(err) }
 
 	assert result.kind == Kind.document
 	assert result.loc?.source.body == body

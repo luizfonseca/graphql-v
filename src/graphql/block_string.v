@@ -43,7 +43,7 @@ fn dedent_block_string_lines(lines []string) []string {
 		}
 	})
 
-	println(new_lines)
+	// println(new_lines)
 
 	return new_lines[first_non_empty_line..last_non_empty_line + 1]
 }
