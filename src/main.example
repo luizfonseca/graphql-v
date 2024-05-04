@@ -2,8 +2,11 @@ module main
 
 import graphql
 import os
+import time
 
 fn main() {
+	watch := time.new_stopwatch()
+	println('Running Github GQL fixture')
 	path := os.real_path('./fixtures/github.graphql')
 
 	file_content := os.read_file(path) or { panic(err) }
@@ -11,7 +14,7 @@ fn main() {
 
 	doc := graphql.parse(file_content, none) or { panic('Error: ${err}') }
 	println('DocumentNode token count: ${doc.token_count}')
-	for {
-		// Watch memory
-	}
+
+	end := watch.elapsed()
+	println('Time elapsed: ${end}')
 }

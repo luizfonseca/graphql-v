@@ -1,7 +1,7 @@
-Module {
-	name: 'graphql-v'
-	description: ''
+Module{
+	name: 'graphql'
+	description: 'GrahQL parser for V'
 	version: ''
-	license: ''
+	license: 'MIT'
 	dependencies: []
 }

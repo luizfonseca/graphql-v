@@ -18,7 +18,6 @@ pub:
 	experimental_client_controlled_nullability ?bool
 }
 
-[heap]
 pub struct Parser {
 	options ParserOptions
 mut:
@@ -28,7 +27,7 @@ mut:
 
 type SourceOrString = Source | string
 
-fn Parser.new(source SourceOrString, options ?ParserOptions) !Parser {
+fn Parser.new(source SourceOrString, options ?ParserOptions) !&Parser {
 	// initial empty source
 	mut source_object := Source.new('', none, none)
 
@@ -38,7 +37,7 @@ fn Parser.new(source SourceOrString, options ?ParserOptions) !Parser {
 		source_object = source as Source
 	}
 
-	return Parser{
+	return &Parser{
 		lexer: Lexer.new(source_object)
 		options: options or { ParserOptions{} }
 		token_counter: 0

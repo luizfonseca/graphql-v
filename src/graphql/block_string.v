@@ -1,12 +1,10 @@
 module graphql
 
-import math
-
 // @internal
 // Produces the value of a block string from its parsed raw value.
 // This implements the GraphQL spec's BlockStringValue() static algorithm.
 fn dedent_block_string_lines(lines []string) []string {
-	mut common_indent := math.max_i32
+	mut common_indent := max_i64
 	mut first_non_empty_line := 0
 	mut last_non_empty_line := -1
 
