@@ -19,7 +19,7 @@ You can parse any string/file using the `.parse` function.
 It returns a [DocumentNode](./src/graphql/src.graphql.md#documentnode) with al the definitions that were parsed, in a tree structure.
 
 ```v
-import graphql
+import luizfonseca.graphql
 import os
 
 fn main() {
@@ -60,5 +60,4 @@ fn main() {
 
 - [GraphQL](https://graphql.org/)
 - [GraphQL.js](https://graphql.org/graphql-js/)
-
 - “GraphQL” is a trademark managed by the [GraphQL Foundation](https://graphql.org/foundation/).
