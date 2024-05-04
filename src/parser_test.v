@@ -1,4 +1,4 @@
-import graphql
+module graphql
 import os
 
 fn test_query_parse() {
