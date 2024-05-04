@@ -2,10 +2,8 @@ module graphql
 
 import regex
 
-const (
-	// LineRegExp regex pattern to match line breaks
-	line_reg_exp = r'/\r\n|[\n\r]/g'
-)
+// LineRegExp regex pattern to match line breaks
+const line_reg_exp = r'/\r\n|[\n\r]/g'
 
 struct SourceLocation {
 pub:

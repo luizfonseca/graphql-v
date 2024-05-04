@@ -149,8 +149,8 @@ pub mut:
 }
 
 interface IArgumentNode {
-	kind Kind
-	name NameNode
+	kind  Kind
+	name  NameNode
 	value ValueNode
 mut:
 	loc ?Location
@@ -302,8 +302,8 @@ pub mut:
 pub type TypeDirectives = DirectiveNode
 
 pub interface IDirectiveNode {
-	kind Kind
-	name NameNode
+	kind      Kind
+	name      NameNode
 	arguments ?[]ArgumentNode
 mut:
 	loc ?Location
